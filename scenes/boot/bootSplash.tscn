@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://d1jx85b78w4k0"]
+[gd_scene format=3 uid="uid://d1jx85b78w4k0"]
 
 [ext_resource type="Texture2D" uid="uid://bfi2h266l87es" path="res://assets/images/boot/ROARC_logo.png" id="1_otbbq"]
 [ext_resource type="Script" uid="uid://b55mqj3mi5xuh" path="res://scripts/boot/boot_splash.gd" id="1_puvn7"]
@@ -7,7 +7,7 @@
 [ext_resource type="Script" uid="uid://dravjrqd7y3ri" path="res://addons/AdmobPlugin/Admob.gd" id="5_malkm"]
 [ext_resource type="FontFile" uid="uid://thje76qcvh0d" path="res://assets/fonts/Raleway-VariableFont_wght.ttf" id="5_y37fu"]
 
-[node name="BootSplash" type="Control"]
+[node name="BootSplash" type="Control" unique_id=1170760808]
 clip_contents = true
 layout_mode = 3
 anchors_preset = 15
@@ -17,7 +17,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_puvn7")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="ColorRect" type="ColorRect" parent="." unique_id=1920367296]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -26,7 +26,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.043137256, 0.023529412, 0.08627451, 1)
 
-[node name="Loader" parent="." instance=ExtResource("3_puvn7")]
+[node name="Loader" parent="." unique_id=954634949 instance=ExtResource("3_puvn7")]
 layout_mode = 1
 anchors_preset = 8
 anchor_top = 0.5
@@ -37,7 +37,7 @@ offset_right = 15.824707
 offset_bottom = 83.82471
 grow_vertical = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="."]
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=1317044902]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -51,11 +51,11 @@ offset_bottom = 45.5
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Logo" type="TextureRect" parent="VBoxContainer"]
+[node name="Logo" type="TextureRect" parent="VBoxContainer" unique_id=948412971]
 layout_mode = 2
 texture = ExtResource("1_otbbq")
 
-[node name="Admob" type="Node" parent="."]
+[node name="Admob" type="Node" parent="." unique_id=48324842]
 script = ExtResource("5_malkm")
 banner_position = 1
 banner_size = 3
@@ -63,7 +63,7 @@ banner_anchor_to_safe_area = true
 android_debug_application_id = "ca-app-pub-3940256099942544~3347511713"
 metadata/_custom_type_script = "uid://dravjrqd7y3ri"
 
-[node name="HBoxContainer" type="HBoxContainer" parent="."]
+[node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=664483056]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -79,13 +79,13 @@ grow_vertical = 2
 theme_override_constants/separation = 7
 metadata/_edit_group_ = true
 
-[node name="Label" type="Label" parent="HBoxContainer"]
+[node name="Label" type="Label" parent="HBoxContainer" unique_id=874659161]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("5_y37fu")
 theme_override_font_sizes/font_size = 30
 text = "POWERED BY"
 
-[node name="TextureRect" type="TextureRect" parent="HBoxContainer"]
+[node name="TextureRect" type="TextureRect" parent="HBoxContainer" unique_id=2116780138]
 modulate = Color(18.892157, 18.892157, 18.892157, 0.13333334)
 custom_minimum_size = Vector2(40, 25)
 layout_mode = 2

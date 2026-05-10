@@ -124,30 +124,31 @@ func _get_explosive_texture() -> Texture2D:
 # Activación
 # ---------------------------------------------------------------------------
 
-func activate(board: GameBoard, row: int, col: int) -> Array:
+func activate(board: GameBoard, cell: Vector2i) -> Array:
 	match special_type:
-		SpecialType.STRIPED_H:  return _get_full_row(board, row)
-		SpecialType.STRIPED_V:  return _get_full_column(board, col)
-		SpecialType.WRAPPED:    return _get_area(board, row, col, 1)
+		SpecialType.STRIPED_H:  return _get_full_row(board, cell.y)
+		SpecialType.STRIPED_V:  return _get_full_column(board, cell.x)
+		SpecialType.WRAPPED:    return _get_area(board, cell, 1)
 		SpecialType.COLOR_BOMB: return board.get_all_positions_of_type(type)
-		_:                      return [{"row": row, "col": col}]
+		_:                      return [cell]
 
 func _get_full_row(board: GameBoard, row: int) -> Array:
-	var positions = []
+	var positions: Array = []
 	for col in board.columns:
-		positions.append({"row": row, "col": col})
+		positions.append(Vector2i(col, row))
 	return positions
 
 func _get_full_column(board: GameBoard, col: int) -> Array:
-	var positions = []
+	var positions: Array = []
 	for row in board.rows:
-		positions.append({"row": row, "col": col})
+		positions.append(Vector2i(col, row))
 	return positions
 
-func _get_area(board: GameBoard, row: int, col: int, radius: int) -> Array:
-	var positions = []
-	for r in range(row - radius, row + radius + 1):
-		for c in range(col - radius, col + radius + 1):
-			if board.is_valid_position(r, c):
-				positions.append({"row": r, "col": c})
+func _get_area(board: GameBoard, center: Vector2i, radius: int) -> Array:
+	var positions: Array = []
+	for y in range(center.y - radius, center.y + radius + 1):
+		for x in range(center.x - radius, center.x + radius + 1):
+			var cell = Vector2i(x, y)
+			if board.is_valid_cell(cell):
+				positions.append(cell)
 	return positions

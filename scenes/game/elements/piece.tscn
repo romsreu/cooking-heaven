@@ -1,8 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://dht3bm524v0q1"]
+[gd_scene format=3 uid="uid://dht3bm524v0q1"]
 
 [ext_resource type="Script" uid="uid://b3l45mgi21mhu" path="res://scenes/game/elements/piece.gd" id="1_uya4f"]
 
-[node name="Piece" type="TextureRect"]
+[node name="Piece" type="TextureRect" unique_id=574591851]
 offset_right = 68.0
 offset_bottom = 69.0
 script = ExtResource("1_uya4f")

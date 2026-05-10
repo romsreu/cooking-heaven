@@ -8,10 +8,7 @@ const GAME_BOARD = preload("uid://rq6gudt8vaw5")
 @onready var admob: Admob = $Admob
 
 const SHADERS_TO_PRELOAD = [
-	"res://resources/shaders/dot.gdshader",
-	"res://resources/shaders/particle_splash.gdshader",
 	"res://resources/shaders/shiny_text.gdshader",
-	"res://resources/shaders/VHS.gdshader"
 ]
 
 func _ready():

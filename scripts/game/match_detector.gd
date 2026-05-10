@@ -4,66 +4,85 @@ extends Node
 signal matches_found(matches: Array)
 signal no_moves_available()
 
-func check_and_emit(grid: Array, rows: int, columns: int) -> Array:
-	var matches = _check_matches(grid, rows, columns)
+# ---------------------------------------------------------------------------
+# match_group es un Dictionary:
+# {
+#   "cells": Array[Vector2i],
+#   "is_tl": bool,
+#   "intersection": Vector2i,
+#   "orientation": String,   # "h", "v", "tl"
+# }
+# ---------------------------------------------------------------------------
+
+func check_and_emit(logic: BoardLogic) -> Array:
+	var matches = _check_matches(logic)
 	if matches.size() > 0:
 		emit_signal("matches_found", matches)
 	return matches
 
-func check_has_moves(grid: Array, rows: int, columns: int) -> void:
-	if not _has_valid_moves(grid, rows, columns):
+func check_has_moves(logic: BoardLogic) -> void:
+	if not _has_valid_moves(logic):
 		emit_signal("no_moves_available")
 
 # ---------------------------------------------------------------------------
-# Detección de matches
+# Detección
 # ---------------------------------------------------------------------------
 
-func _check_matches(grid: Array, rows: int, columns: int) -> Array:
-	var h_groups = []
-	var v_groups = []
+func _check_matches(logic: BoardLogic) -> Array:
+	var h_groups: Array = []
+	var v_groups: Array = []
 
-	# Recolectar todos los grupos horizontales
-	for row in rows:
-		var col = 0
-		while col < columns:
-			var group = _expand_horizontal(grid, row, col, columns)
-			if group.size() >= 3:
-				h_groups.append(group)
-				col += group.size()
+	for row in logic.rows:
+		var col := 0
+		while col < logic.columns:
+			var cells = _expand_horizontal(logic, row, col)
+			if cells.size() >= 3:
+				h_groups.append({
+					"cells": cells,
+					"is_tl": false,
+					"intersection": Vector2i(-1, -1),
+					"orientation": "h",
+				})
+				col += cells.size()
 			else:
 				col += 1
 
-	# Recolectar todos los grupos verticales
-	for col in columns:
-		var row = 0
-		while row < rows:
-			var group = _expand_vertical(grid, row, col, rows)
-			if group.size() >= 3:
-				v_groups.append(group)
-				row += group.size()
+	for col in logic.columns:
+		var row := 0
+		while row < logic.rows:
+			var cells = _expand_vertical(logic, row, col)
+			if cells.size() >= 3:
+				v_groups.append({
+					"cells": cells,
+					"is_tl": false,
+					"intersection": Vector2i(-1, -1),
+					"orientation": "v",
+				})
+				row += cells.size()
 			else:
 				row += 1
 
 	return _resolve_groups(h_groups, v_groups)
 
 func _resolve_groups(h_groups: Array, v_groups: Array) -> Array:
-	var matches = []
-	var used_h = {}
-	var used_v = {}
+	var matches: Array = []
+	var used_h := {}
+	var used_v := {}
 
 	for hi in h_groups.size():
 		for vi in v_groups.size():
-			var intersection = _find_intersection(h_groups[hi], v_groups[vi])
+			var intersection = _find_intersection(h_groups[hi].cells, v_groups[vi].cells)
 			if intersection.x != -1:
-				# Fusionar los dos grupos en uno, deduplicando
-				var merged = _merge_groups(h_groups[hi], v_groups[vi])
-				merged[0]["is_tl"] = true  # marcar para get_special_type_for_match
-				merged[0]["intersection"] = intersection  # celda de cruce
-				matches.append(merged)
+				var merged_cells = _merge_cells(h_groups[hi].cells, v_groups[vi].cells)
+				matches.append({
+					"cells": merged_cells,
+					"is_tl": true,
+					"intersection": intersection,
+					"orientation": "tl",
+				})
 				used_h[hi] = true
 				used_v[vi] = true
 
-	# Agregar los grupos que no participaron en ninguna T/L
 	for hi in h_groups.size():
 		if not used_h.has(hi):
 			matches.append(h_groups[hi])
@@ -74,95 +93,87 @@ func _resolve_groups(h_groups: Array, v_groups: Array) -> Array:
 
 	return matches
 
-func _find_intersection(group_a: Array, group_b: Array) -> Vector2i:
-	for a in group_a:
-		for b in group_b:
-			if a.row == b.row and a.col == b.col:
-				return Vector2i(a.col, a.row)
+func _find_intersection(cells_a: Array, cells_b: Array) -> Vector2i:
+	for a in cells_a:
+		for b in cells_b:
+			if a == b:
+				return a
 	return Vector2i(-1, -1)
 
-func _merge_groups(group_a: Array, group_b: Array) -> Array:
-	var merged = []
-	var seen = {}
-	for pos in group_a + group_b:
-		var key = str(pos.row) + "_" + str(pos.col)
-		if not seen.has(key):
-			seen[key] = true
-			merged.append(pos)
+func _merge_cells(cells_a: Array, cells_b: Array) -> Array:
+	var merged: Array = []
+	var seen := {}
+	for cell in cells_a + cells_b:
+		if not seen.has(cell):
+			seen[cell] = true
+			merged.append(cell)
 	return merged
 
-func _expand_horizontal(grid: Array, row: int, start_col: int, columns: int) -> Array:
-	var piece = _get_piece(grid, row, start_col)
+func _expand_horizontal(logic: BoardLogic, row: int, start_col: int) -> Array:
+	var piece = logic.get_cell(Vector2i(start_col, row))
 	if not piece:
 		return []
 
-	var group = [{"row": row, "col": start_col}]
+	var cells: Array = [Vector2i(start_col, row)]
 	var type = piece.get_type()
 
-	for col in range(start_col + 1, columns):
-		var current = _get_piece(grid, row, col)
+	for col in range(start_col + 1, logic.columns):
+		var current = logic.get_cell(Vector2i(col, row))
 		if current and current.get_type() == type:
-			group.append({"row": row, "col": col})
+			cells.append(Vector2i(col, row))
 		else:
 			break
 
-	return group
+	return cells
 
-func _expand_vertical(grid: Array, start_row: int, col: int, rows: int) -> Array:
-	var piece = _get_piece(grid, start_row, col)
+func _expand_vertical(logic: BoardLogic, start_row: int, col: int) -> Array:
+	var piece = logic.get_cell(Vector2i(col, start_row))
 	if not piece:
 		return []
 
-	var group = [{"row": start_row, "col": col}]
+	var cells: Array = [Vector2i(col, start_row)]
 	var type = piece.get_type()
 
-	for row in range(start_row + 1, rows):
-		var current = _get_piece(grid, row, col)
+	for row in range(start_row + 1, logic.rows):
+		var current = logic.get_cell(Vector2i(col, row))
 		if current and current.get_type() == type:
-			group.append({"row": row, "col": col})
+			cells.append(Vector2i(col, row))
 		else:
 			break
 
-	return group
+	return cells
 
-func get_special_type_for_match(match_group: Array) -> Piece.SpecialType:
-	# T o L detectada en _resolve_groups
-	if match_group.size() > 0 and match_group[0].get("is_tl", false):
+func get_special_type_for_match(match_group: Dictionary) -> Piece.SpecialType:
+	if match_group.is_tl:
 		return Piece.SpecialType.WRAPPED
 
-	var size = match_group.size()
+	var size = match_group.cells.size()
 	if size >= 5:
 		return Piece.SpecialType.COLOR_BOMB
 	if size == 4:
-		var is_horizontal = match_group[0].row == match_group[1].row
-		return Piece.SpecialType.STRIPED_H if is_horizontal else Piece.SpecialType.STRIPED_V
+		return Piece.SpecialType.STRIPED_H if match_group.orientation == "h" else Piece.SpecialType.STRIPED_V
 	return Piece.SpecialType.NONE
 
 # ---------------------------------------------------------------------------
-# Movimientos posibles
+# Movimientos válidos
 # ---------------------------------------------------------------------------
 
-func _has_valid_moves(grid: Array, rows: int, columns: int) -> bool:
-	for row in rows:
-		for col in columns:
-			if col + 1 < columns:
-				_swap_in_grid(grid, row, col, row, col + 1)
-				var found = _check_matches(grid, rows, columns).size() > 0
-				_swap_in_grid(grid, row, col, row, col + 1)
-				if found:
+func _has_valid_moves(logic: BoardLogic) -> bool:
+	for row in logic.rows:
+		for col in logic.columns:
+			var a = Vector2i(col, row)
+			if col + 1 < logic.columns:
+				var b = Vector2i(col + 1, row)
+				logic.swap_cells(a, b)
+				var found_h = _check_matches(logic).size() > 0
+				logic.swap_cells(a, b)
+				if found_h:
 					return true
-			if row + 1 < rows:
-				_swap_in_grid(grid, row, col, row + 1, col)
-				var found = _check_matches(grid, rows, columns).size() > 0
-				_swap_in_grid(grid, row, col, row + 1, col)
-				if found:
+			if row + 1 < logic.rows:
+				var b = Vector2i(col, row + 1)
+				logic.swap_cells(a, b)
+				var found_v = _check_matches(logic).size() > 0
+				logic.swap_cells(a, b)
+				if found_v:
 					return true
 	return false
-
-func _swap_in_grid(grid: Array, r1: int, c1: int, r2: int, c2: int) -> void:
-	var temp = grid[r1][c1]
-	grid[r1][c1] = grid[r2][c2]
-	grid[r2][c2] = temp
-
-func _get_piece(grid: Array, row: int, col: int) -> Piece:
-	return grid[row][col]

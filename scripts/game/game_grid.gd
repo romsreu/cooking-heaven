@@ -14,11 +14,15 @@ signal swap_completed(valid: bool)
 
 @export var min_drag_distance: float = 40.0
 
-var grid: Array[Array] = []
+const SCORE_PER_PIECE: int = 60
+const SCORE_PER_SPECIAL_CREATED: int = 100
+const COMBO_MULTIPLIER_INCREMENT: float = 0.5
+
+var current_combo: int = 0
+var logic: BoardLogic
 var is_swapping: bool = false
 
-var drag_start_row: int = -1
-var drag_start_col: int = -1
+var drag_start_cell: Vector2i = Vector2i(-1, -1)
 var drag_start_pos: Vector2 = Vector2.ZERO
 var dragged_piece: Piece = null
 
@@ -26,7 +30,28 @@ var dragged_piece: Piece = null
 @onready var fx_layer: FXLayer = $FxLayer
 
 func _ready():
-	initialize_board()
+	if not GameState.current_level_data:
+		initialize_board()
+
+func _apply_level_data(data: LevelData) -> void:
+	rows = data.rows
+	columns = data.columns
+
+# ---------------------------------------------------------------------------
+# Atajos a logic
+# ---------------------------------------------------------------------------
+
+func get_cell(pos: Vector2i) -> Piece:
+	return logic.get_cell(pos)
+
+func set_cell(pos: Vector2i, piece) -> void:
+	logic.set_cell(pos, piece)
+
+func is_valid_cell(pos: Vector2i) -> bool:
+	return logic.is_valid_cell(pos)
+
+func get_all_positions_of_type(type: Piece.PieceType) -> Array:
+	return logic.get_all_positions_of_type(type)
 
 # ---------------------------------------------------------------------------
 # Inicialización
@@ -34,47 +59,50 @@ func _ready():
 
 func initialize_board() -> void:
 	clear_board()
-	grid.resize(rows)
-	for row in rows:
-		grid[row] = []
-		grid[row].resize(columns)
+	# Usar la forma del nivel actual si existe
+	var shape: BoardShape = null
+	if GameState.current_level_data and GameState.current_level_data.shape:
+		shape = GameState.current_level_data.shape
+	logic = BoardLogic.new(rows, columns, shape)
 	generate_initial_pieces()
 	update_board_size()
-	call_deferred("_resolve_initial_matches")
-
-func _resolve_initial_matches() -> void:
-	var matches = match_detector.check_and_emit(grid, rows, columns)
-	if matches.size() > 0:
-		await process_matches(matches)
 
 func clear_board() -> void:
 	for child in get_children():
 		if child is Piece:
 			child.queue_free()
-	grid.clear()
 
 func generate_initial_pieces() -> void:
-	for row in rows:
-		for col in columns:
-			create_piece_at(row, col)
+	var available_types = []
+	if GameState.current_level_data and GameState.current_level_data.available_piece_types.size() > 0:
+		available_types = GameState.current_level_data.available_piece_types
 
-func create_piece_at(row: int, col: int) -> Piece:
+	# Solo crear piezas en celdas jugables
+	for cell in logic.get_all_playable_cells():
+		var safe_type = logic.get_safe_random_type(cell, available_types)
+		create_piece_at(cell, safe_type)
+
+func create_piece_at(cell: Vector2i, forced_type = null) -> Piece:
 	var piece = Piece.new()
-	var random_type = Piece.PieceType.values()[randi() % Piece.PieceType.size()]
+	var piece_type
+	if forced_type != null:
+		piece_type = forced_type
+	else:
+		var available = Piece.PieceType.values()
+		if GameState.current_level_data and GameState.current_level_data.available_piece_types.size() > 0:
+			available = GameState.current_level_data.available_piece_types
+		piece_type = available[randi() % available.size()]
 
 	piece.custom_minimum_size = piece_size
 	piece.size = piece_size
 	piece.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	add_child(piece)
-	piece.setup(random_type)
-	position_piece(piece, row, col)
+	piece.setup(piece_type)
+	piece.position = cell_to_pixel(cell)
 
-	grid[row][col] = piece
+	logic.set_cell(cell, piece)
 	return piece
-
-func position_piece(piece: Piece, row: int, col: int) -> void:
-	piece.position = get_screen_pos(row, col)
 
 func update_board_size() -> void:
 	var total_width = columns * piece_size.x + (columns - 1) * horizontal_spacing
@@ -82,43 +110,27 @@ func update_board_size() -> void:
 	custom_minimum_size = Vector2(total_width, total_height)
 
 # ---------------------------------------------------------------------------
-# Utilidades de grid
+# Conversiones cell ↔ pixel
 # ---------------------------------------------------------------------------
 
-func get_piece_at(row: int, col: int) -> Piece:
-	if is_valid_position(row, col):
-		return grid[row][col]
-	return null
-
-func is_valid_position(row: int, col: int) -> bool:
-	return row >= 0 and row < rows and col >= 0 and col < columns
-
-func get_screen_pos(row: int, col: int) -> Vector2:
+func cell_to_pixel(pos: Vector2i) -> Vector2:
 	return Vector2(
-		col * (piece_size.x + horizontal_spacing),
-		row * (piece_size.y + vertical_spacing)
+		pos.x * (piece_size.x + horizontal_spacing),
+		pos.y * (piece_size.y + vertical_spacing)
 	)
 
-func screen_to_grid(screen_pos: Vector2) -> Vector2i:
+func pixel_to_cell(screen_pos: Vector2) -> Vector2i:
 	var col = int(screen_pos.x / (piece_size.x + horizontal_spacing))
 	var row = int(screen_pos.y / (piece_size.y + vertical_spacing))
 
-	if is_valid_position(row, col):
+	var cell = Vector2i(col, row)
+	if is_valid_cell(cell):
 		var local_x = screen_pos.x - col * (piece_size.x + horizontal_spacing)
 		var local_y = screen_pos.y - row * (piece_size.y + vertical_spacing)
 		if local_x >= 0 and local_x <= piece_size.x and local_y >= 0 and local_y <= piece_size.y:
-			return Vector2i(col, row)
+			return cell
 
 	return Vector2i(-1, -1)
-
-func get_all_positions_of_type(type: Piece.PieceType) -> Array:
-	var positions = []
-	for row in rows:
-		for col in columns:
-			var piece = get_piece_at(row, col)
-			if piece and piece.get_type() == type:
-				positions.append({"row": row, "col": col})
-	return positions
 
 # ---------------------------------------------------------------------------
 # Input / Drag
@@ -144,18 +156,16 @@ func _gui_input(event: InputEvent) -> void:
 		on_dragging(event.position)
 
 func on_drag_start(pos: Vector2) -> void:
-	var grid_pos = screen_to_grid(pos)
+	var cell = pixel_to_cell(pos)
 
-	if grid_pos.x == -1:
-		drag_start_row = -1
-		drag_start_col = -1
+	if cell.x == -1:
+		drag_start_cell = Vector2i(-1, -1)
 		dragged_piece = null
 		return
 
-	drag_start_row = grid_pos.y
-	drag_start_col = grid_pos.x
+	drag_start_cell = cell
 	drag_start_pos = pos
-	dragged_piece = get_piece_at(drag_start_row, drag_start_col)
+	dragged_piece = get_cell(cell)
 
 	if dragged_piece:
 		var tween = create_tween()
@@ -163,25 +173,23 @@ func on_drag_start(pos: Vector2) -> void:
 		dragged_piece.modulate = Color(1.3, 1.3, 1.3)
 
 func on_dragging(pos: Vector2) -> void:
-	if drag_start_row == -1 or not dragged_piece:
+	if drag_start_cell.x == -1 or not dragged_piece:
 		return
 
 	var drag_vector = pos - drag_start_pos
 	if drag_vector.length() < min_drag_distance:
 		return
 
-	var target_row = drag_start_row
-	var target_col = drag_start_col
+	var target_cell = drag_start_cell
 
 	if abs(drag_vector.x) > abs(drag_vector.y):
-		target_col += 1 if drag_vector.x > 0 else -1
+		target_cell.x += 1 if drag_vector.x > 0 else -1
 	else:
-		target_row += 1 if drag_vector.y > 0 else -1
+		target_cell.y += 1 if drag_vector.y > 0 else -1
 
-	if is_valid_position(target_row, target_col):
-		execute_swap(drag_start_row, drag_start_col, target_row, target_col)
-		drag_start_row = -1
-		drag_start_col = -1
+	if is_valid_cell(target_cell):
+		execute_swap(drag_start_cell, target_cell)
+		drag_start_cell = Vector2i(-1, -1)
 		dragged_piece = null
 
 func on_drag_end(_pos: Vector2) -> void:
@@ -190,23 +198,18 @@ func on_drag_end(_pos: Vector2) -> void:
 		tween.tween_property(dragged_piece, "scale", Vector2(1.0, 1.0), 0.1)
 		dragged_piece.modulate = Color(1.0, 1.0, 1.0)
 
-	drag_start_row = -1
-	drag_start_col = -1
+	drag_start_cell = Vector2i(-1, -1)
 	dragged_piece = null
 
 # ---------------------------------------------------------------------------
 # Swap
 # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Swap
-# ---------------------------------------------------------------------------
-
-func execute_swap(row1: int, col1: int, row2: int, col2: int) -> void:
+func execute_swap(cell_a: Vector2i, cell_b: Vector2i) -> void:
 	is_swapping = true
 
-	var piece1 = get_piece_at(row1, col1)
-	var piece2 = get_piece_at(row2, col2)
+	var piece1 = get_cell(cell_a)
+	var piece2 = get_cell(cell_b)
 
 	if not piece1 or not piece2:
 		is_swapping = false
@@ -217,162 +220,198 @@ func execute_swap(row1: int, col1: int, row2: int, col2: int) -> void:
 
 	var tween1 = create_tween()
 	var tween2 = create_tween()
-	tween1.tween_property(piece1, "position", get_screen_pos(row2, col2), 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween2.tween_property(piece2, "position", get_screen_pos(row1, col1), 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween1.tween_property(piece1, "position", cell_to_pixel(cell_b), 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween2.tween_property(piece2, "position", cell_to_pixel(cell_a), 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
-	grid[row1][col1] = piece2
-	grid[row2][col2] = piece1
+	logic.swap_cells(cell_a, cell_b)
 
 	await tween1.finished
 
-	# Caso especial: color_bomb se activa directamente al swapear
-	# La pieza con la que se swapea define qué tipo se elimina
 	if piece1.special_type == Piece.SpecialType.COLOR_BOMB or piece2.special_type == Piece.SpecialType.COLOR_BOMB:
-		await _activate_color_bomb_swap(piece1, piece2, row1, col1, row2, col2)
+		await _activate_color_bomb_swap(piece1, piece2, cell_a, cell_b)
 		is_swapping = false
 		return
 
-	var matches = match_detector.check_and_emit(grid, rows, columns)
+	var matches = match_detector.check_and_emit(logic)
 
 	if matches.size() > 0:
 		emit_signal("swap_completed", true)
-		await process_matches(matches, row1, col1, row2, col2)
+		current_combo = 0
+		GameState.consume_move()
+		await process_matches(matches, cell_a, cell_b)
 	else:
 		emit_signal("swap_completed", false)
-		await revert_swap(row1, col1, row2, col2, piece1, piece2)
+		await revert_swap(cell_a, cell_b, piece1, piece2)
 
 	is_swapping = false
 
-func _activate_color_bomb_swap(piece1: Piece, piece2: Piece, row1: int, col1: int, row2: int, col2: int) -> void:
-	# Determinar cuál es la color_bomb y cuál define el tipo a eliminar
-	var bomb: Piece
-	var target: Piece
-	var bomb_row: int
-	var bomb_col: int
-
-	if piece1.special_type == Piece.SpecialType.COLOR_BOMB:
-		bomb = piece1
-		bomb_row = row2  # después del swap piece1 está en row2,col2
-		bomb_col = col2
-		target = piece2
-	else:
-		bomb = piece2
-		bomb_row = row1
-		bomb_col = col1
-		target = piece1
-
-	# Obtener todas las posiciones del tipo de la pieza target
-	# COLOR_BOMB.activate() usa self.type para buscar, así que le asignamos
-	# temporalmente el tipo del target
-	bomb.type = target.get_type()
-	var positions = bomb.activate(self, bomb_row, bomb_col)
-
-	emit_signal("swap_completed", true)
-	await remove_pieces(positions)
-	await _fill_board()
-
-	var new_matches = match_detector.check_and_emit(grid, rows, columns)
-	if new_matches.size() > 0:
-		await get_tree().create_timer(0.15).timeout
-		await process_matches(new_matches)
-	else:
-		match_detector.check_has_moves(grid, rows, columns)
-
-func revert_swap(row1: int, col1: int, row2: int, col2: int, piece1: Piece, piece2: Piece) -> void:
+func revert_swap(cell_a: Vector2i, cell_b: Vector2i, piece1: Piece, piece2: Piece) -> void:
 	var tween1 = create_tween()
 	var tween2 = create_tween()
-	tween1.tween_property(piece1, "position", get_screen_pos(row1, col1), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween2.tween_property(piece2, "position", get_screen_pos(row2, col2), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween1.tween_property(piece1, "position", cell_to_pixel(cell_a), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween2.tween_property(piece2, "position", cell_to_pixel(cell_b), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
-	grid[row1][col1] = piece1
-	grid[row2][col2] = piece2
+	logic.swap_cells(cell_a, cell_b)
 
 	await tween1.finished
 
-
-func _trigger_fx_for_piece(piece: Piece, row: int, col: int) -> void:
-	var pos = get_screen_pos(row, col) + piece_size / 2.0
+func _trigger_fx_for_piece(piece: Piece, cell: Vector2i) -> void:
+	var pos = cell_to_pixel(cell) + piece_size / 2.0
 	match piece.special_type:
 		Piece.SpecialType.STRIPED_H:   fx_layer.play_striped_h(pos)
 		Piece.SpecialType.STRIPED_V:   fx_layer.play_striped_v(pos)
 		Piece.SpecialType.WRAPPED:     fx_layer.play_wrapped(pos)
 		Piece.SpecialType.COLOR_BOMB:  fx_layer.play_color_bomb(pos)
+
 # ---------------------------------------------------------------------------
-# Procesamiento de matches
+# Matches
 # ---------------------------------------------------------------------------
 
-func process_matches(matches: Array, moved_row: int = -1, moved_col: int = -1, moved_row2: int = -1, moved_col2: int = -1) -> void:
-	var pieces_to_remove = []
-	var specials_to_create = []
-	var seen_remove = {}
-	var seen_special = {}
+func process_matches(matches: Array, moved_a: Vector2i = Vector2i(-1, -1), moved_b: Vector2i = Vector2i(-1, -1)) -> void:
+	var pieces_to_remove: Array = []
+	var specials_to_create: Array = []
+	var seen_remove := {}
+	var seen_special := {}
+	var fx_already_triggered := {}
 
-	matches.sort_custom(func(a, b): return a.size() > b.size())
+	matches.sort_custom(func(a, b): return a.cells.size() > b.cells.size())
 
 	for match_group in matches:
 		var special = match_detector.get_special_type_for_match(match_group)
-
-		var spawn_pos: Vector2i = Vector2i(-1, -1)
+		var spawn_cell: Vector2i = Vector2i(-1, -1)
 
 		if special != Piece.SpecialType.NONE:
-			if match_group.size() > 0 and match_group[0].get("is_tl", false):
-				spawn_pos = match_group[0].get("intersection", Vector2i(-1, -1))
+			if match_group.is_tl:
+				spawn_cell = match_group.intersection
 			else:
-				spawn_pos = _find_moved_piece_in_group(match_group, moved_row, moved_col, moved_row2, moved_col2)
-				if spawn_pos.x == -1:
-					var center = match_group[match_group.size() / 2]
-					spawn_pos = Vector2i(center.col, center.row)
+				spawn_cell = _find_moved_cell_in_group(match_group.cells, moved_a, moved_b)
+				if spawn_cell.x == -1:
+					spawn_cell = match_group.cells[match_group.cells.size() / 2]
 
-			var center_key = str(spawn_pos.y) + "_" + str(spawn_pos.x)
-			if not seen_special.has(center_key):
-				seen_special[center_key] = true
-				specials_to_create.append({
-					"row": spawn_pos.y,
-					"col": spawn_pos.x,
-					"base_type": get_piece_at(spawn_pos.y, spawn_pos.x).get_type(),
-					"special": special
-				})
-		for pos in match_group:
-				var piece = get_piece_at(pos.row, pos.col)
-				if not piece:
-					continue
+			if not seen_special.has(spawn_cell):
+				seen_special[spawn_cell] = true
+				var base_piece = get_cell(spawn_cell)
+				if base_piece:
+					specials_to_create.append({
+						"cell": spawn_cell,
+						"base_type": base_piece.get_type(),
+						"special": special,
+					})
 
-				# Disparar FX si esta pieza es especial y se está activando ahora
-				if piece.special_type != Piece.SpecialType.NONE:
-					_trigger_fx_for_piece(piece, pos.row, pos.col)
+		for cell in match_group.cells:
+			var piece = get_cell(cell)
+			if not piece:
+				continue
 
-				var affected = piece.activate(self, pos.row, pos.col)
-				for affected_pos in affected:
-					var key = str(affected_pos.row) + "_" + str(affected_pos.col)
-					if not seen_remove.has(key):
-						seen_remove[key] = true
-						pieces_to_remove.append(affected_pos)
+			if piece.special_type != Piece.SpecialType.NONE and not fx_already_triggered.has(cell):
+				fx_already_triggered[cell] = true
+				_trigger_fx_for_piece(piece, cell)
+
+			var affected_cells = piece.activate(self, cell)
+			for affected in affected_cells:
+				if not seen_remove.has(affected):
+					seen_remove[affected] = true
+					pieces_to_remove.append(affected)
+
+	pieces_to_remove = pieces_to_remove.filter(func(c): return not seen_special.has(c))
+
+	var combo_multiplier = 1.0 + current_combo * COMBO_MULTIPLIER_INCREMENT
+	var pieces_count = pieces_to_remove.size() + specials_to_create.size()
+	var match_score = int(pieces_count * SCORE_PER_PIECE * combo_multiplier)
+	match_score += specials_to_create.size() * SCORE_PER_SPECIAL_CREATED
+	GameState.add_score(match_score)
+	current_combo += 1
 
 	await remove_pieces(pieces_to_remove)
 
 	for spec in specials_to_create:
-		var piece = create_piece_at(spec.row, spec.col)
-		piece.setup(spec.base_type)
+		var old_piece = get_cell(spec.cell)
+		if old_piece:
+			logic.set_cell(spec.cell, null)
+			old_piece.queue_free()
+
+	for spec in specials_to_create:
+		var piece = create_piece_at(spec.cell, spec.base_type)
 		piece.special_type = spec.special
 		piece.update_visual()
+		piece.scale = Vector2(0.5, 0.5)
+		var pop_tween = create_tween()
+		pop_tween.tween_property(piece, "scale", Vector2(1.0, 1.0), 0.2) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 	await _fill_board()
 
-	var new_matches = match_detector.check_and_emit(grid, rows, columns)
+	var new_matches = match_detector.check_and_emit(logic)
 	if new_matches.size() > 0:
 		await get_tree().create_timer(0.15).timeout
 		await process_matches(new_matches)
 	else:
-		match_detector.check_has_moves(grid, rows, columns)
+		match_detector.check_has_moves(logic)
+		GameState.check_end_conditions_after_cascades()
 
-func _find_moved_piece_in_group(match_group: Array, r1: int, c1: int, r2: int, c2: int) -> Vector2i:
-	for pos in match_group:
-		if (pos.row == r1 and pos.col == c1) or (pos.row == r2 and pos.col == c2):
-			return Vector2i(pos.col, pos.row)
+func _find_moved_cell_in_group(cells: Array, moved_a: Vector2i, moved_b: Vector2i) -> Vector2i:
+	for cell in cells:
+		if cell == moved_a or cell == moved_b:
+			return cell
 	return Vector2i(-1, -1)
 
 # ---------------------------------------------------------------------------
-# Relleno
+# Color Bomb
+# ---------------------------------------------------------------------------
+
+func _activate_color_bomb_swap(piece1: Piece, piece2: Piece, cell_a: Vector2i, cell_b: Vector2i) -> void:
+	var bomb: Piece
+	var target: Piece
+	var bomb_cell: Vector2i
+
+	if piece1.special_type == Piece.SpecialType.COLOR_BOMB:
+		bomb = piece1
+		bomb_cell = cell_b
+		target = piece2
+	else:
+		bomb = piece2
+		bomb_cell = cell_a
+		target = piece1
+
+	if target.special_type == Piece.SpecialType.COLOR_BOMB:
+		var all_cells = logic.get_all_occupied_cells()
+		_trigger_fx_for_piece(bomb, bomb_cell)
+		emit_signal("swap_completed", true)
+		current_combo = 0
+		GameState.consume_move()
+		await remove_pieces(all_cells)
+		await _fill_board()
+
+		var post_matches = match_detector.check_and_emit(logic)
+		if post_matches.size() > 0:
+			await get_tree().create_timer(0.15).timeout
+			await process_matches(post_matches)
+		else:
+			match_detector.check_has_moves(logic)
+			GameState.check_end_conditions_after_cascades()
+		return
+
+	var positions = get_all_positions_of_type(target.get_type())
+	if not positions.has(bomb_cell):
+		positions.append(bomb_cell)
+
+	_trigger_fx_for_piece(bomb, bomb_cell)
+	emit_signal("swap_completed", true)
+	current_combo = 0
+	GameState.consume_move()
+	await remove_pieces(positions)
+	await _fill_board()
+
+	var new_matches = match_detector.check_and_emit(logic)
+	if new_matches.size() > 0:
+		await get_tree().create_timer(0.15).timeout
+		await process_matches(new_matches)
+	else:
+		match_detector.check_has_moves(logic)
+		GameState.check_end_conditions_after_cascades()
+
+# ---------------------------------------------------------------------------
+# Eliminación y relleno
 # ---------------------------------------------------------------------------
 
 func _fill_board() -> void:
@@ -380,22 +419,36 @@ func _fill_board() -> void:
 	await BoardFiller.spawn_new_pieces(self)
 
 func remove_pieces(positions: Array) -> void:
-	var unique = {}
-	for pos in positions:
-		var key = str(pos.row) + "_" + str(pos.col)
-		unique[key] = pos
+	if positions.is_empty():
+		return
 
-	var tweens = []
-	for key in unique:
-		var pos = unique[key]
-		var piece = get_piece_at(pos.row, pos.col)
+	var unique := {}
+	for cell in positions:
+		unique[cell] = true
+
+	var pieces_by_type := {}
+
+	var master_tween = create_tween().set_parallel(true)
+	var any_animated = false
+
+	for cell in unique:
+		var piece = get_cell(cell)
 		if not piece:
 			continue
-		grid[pos.row][pos.col] = null
-		var tween = create_tween()
-		tween.tween_property(piece, "scale", Vector2.ZERO, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-		tween.tween_callback(piece.queue_free)
-		tweens.append(tween)
 
-	if tweens.size() > 0:
-		await tweens[tweens.size() - 1].finished
+		var ptype = piece.get_type()
+		if not pieces_by_type.has(ptype):
+			pieces_by_type[ptype] = 0
+		pieces_by_type[ptype] += 1
+
+		logic.set_cell(cell, null)
+		master_tween.tween_property(piece, "scale", Vector2.ZERO, 0.15) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		master_tween.tween_callback(piece.queue_free).set_delay(0.15)
+		any_animated = true
+
+	if pieces_by_type.size() > 0:
+		GameState.report_pieces_removed(pieces_by_type)
+
+	if any_animated:
+		await master_tween.finished

@@ -1,5 +1,6 @@
-[gd_scene load_steps=10 format=3 uid="uid://rq6gudt8vaw5"]
+[gd_scene format=3 uid="uid://rq6gudt8vaw5"]
 
+[ext_resource type="Script" uid="uid://dqxqp53ojibhc" path="res://scenes/game/game.gd" id="1_2a8rs"]
 [ext_resource type="Shader" uid="uid://ebrpgdv67et6" path="res://resources/shaders/game_board.gdshader" id="1_kelw5"]
 [ext_resource type="Texture2D" uid="uid://bhldfhiq6jolf" path="res://assets/images/ui/panels/level_background.png" id="1_lfrn8"]
 [ext_resource type="Texture2D" uid="uid://b2ybh7ajslrvq" path="res://assets/images/ui/panels/game_grid.png" id="2_lfrn8"]
@@ -8,19 +9,22 @@
 [ext_resource type="PackedScene" uid="uid://duv1di2pw13tf" path="res://scenes/ui/buttons/general_buttons/general_settings_button.tscn" id="6_5i0tg"]
 [ext_resource type="Texture2D" uid="uid://dnxeefe0q7rhm" path="res://assets/images/ui/panels/rect.png" id="6_bdhmt"]
 [ext_resource type="PackedScene" uid="uid://tdvb18mjqw83" path="res://scenes/game/elements/profile_button.tscn" id="8_87uf6"]
+[ext_resource type="Script" uid="uid://emfs2fvplghl" path="res://scripts/game/HUD.gd" id="10_kp23o"]
+[ext_resource type="Script" uid="uid://bp74jtwelc7jl" path="res://scripts/game/level_end_panel.gd" id="11_5jirj"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_8sfkx"]
 shader = ExtResource("1_kelw5")
 
-[node name="Game" type="Control"]
+[node name="Game" type="Control" unique_id=618880733]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("1_2a8rs")
 
-[node name="Background" type="TextureRect" parent="."]
+[node name="Background" type="TextureRect" parent="." unique_id=766052897]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -30,7 +34,7 @@ grow_vertical = 2
 texture = ExtResource("1_lfrn8")
 expand_mode = 1
 
-[node name="GameBoard" type="TextureRect" parent="."]
+[node name="GameBoard" type="TextureRect" parent="." unique_id=1289674166]
 material = SubResource("ShaderMaterial_8sfkx")
 layout_mode = 1
 anchors_preset = 8
@@ -47,7 +51,7 @@ grow_vertical = 2
 texture = ExtResource("2_lfrn8")
 expand_mode = 1
 
-[node name="GameGrid" parent="GameBoard" instance=ExtResource("3_5i0tg")]
+[node name="GameGrid" parent="GameBoard" unique_id=1231327893 instance=ExtResource("3_5i0tg")]
 clip_contents = true
 layout_mode = 1
 anchors_preset = -1
@@ -58,26 +62,39 @@ anchor_bottom = 0.9970889
 piece_size = Vector2(53, 53)
 metadata/_edit_use_anchors_ = true
 
-[node name="Control" type="Control" parent="."]
+[node name="HUD" type="Control" parent="." unique_id=1200129847]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -356.0
+offset_right = 131.0
+offset_bottom = 86.0
+grow_horizontal = 2
+script = ExtResource("10_kp23o")
+
+[node name="Control" type="Control" parent="." unique_id=1041065305]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_bottom = 158.0
 grow_horizontal = 2
 
-[node name="TopPanel" type="TextureRect" parent="Control"]
+[node name="TopPanel" type="TextureRect" parent="Control" unique_id=345439470]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = 2.0
-offset_bottom = 59.0
+offset_left = 14.0
+offset_top = 56.0
+offset_right = 14.0
+offset_bottom = 113.0
 grow_horizontal = 2
 grow_vertical = 2
 texture = ExtResource("4_kelw5")
 expand_mode = 1
 
-[node name="Label" type="Label" parent="Control/TopPanel"]
+[node name="Label" type="Label" parent="Control/TopPanel" unique_id=854627339]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -91,12 +108,12 @@ offset_bottom = 24.5
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Rect" type="Sprite2D" parent="Control/TopPanel"]
+[node name="Rect" type="Sprite2D" parent="Control/TopPanel" unique_id=1535280992]
 position = Vector2(344, 976.00006)
 scale = Vector2(0.2370801, 0.17261909)
 texture = ExtResource("6_bdhmt")
 
-[node name="SettingsButton" parent="." instance=ExtResource("6_5i0tg")]
+[node name="SettingsButton" parent="." unique_id=1476517692 instance=ExtResource("6_5i0tg")]
 layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
@@ -107,7 +124,7 @@ offset_right = 93.0
 offset_bottom = -58.80847
 grow_vertical = 0
 
-[node name="ProfileButton" parent="." instance=ExtResource("8_87uf6")]
+[node name="ProfileButton" parent="." unique_id=1585833611 instance=ExtResource("8_87uf6")]
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
@@ -120,3 +137,9 @@ offset_right = -7.6781006
 offset_bottom = 180.625
 grow_horizontal = 0
 grow_vertical = 1
+
+[node name="LEVELEND" type="Control" parent="." unique_id=2084108844]
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("11_5jirj")
